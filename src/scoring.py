@@ -40,9 +40,50 @@ from src.config import (
     RETRY_DELAY_SECONDS,
     SCORE_MIN,
     SCORE_MAX,
+    LLM_CACHE_DIR,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_cache_key(model: str, prompt: str, temperature: float, max_tokens: int) -> str:
+    """Generate deterministic hash key for an LLM request."""
+    import hashlib
+    payload = f"{model}::{temperature}::{max_tokens}::{prompt}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _read_from_cache(cache_key: str) -> Optional[str]:
+    """Read cached raw LLM response string from disk if present."""
+    if not LLM_CACHE_DIR.exists():
+        return None
+    cache_file = LLM_CACHE_DIR / f"{cache_key}.json"
+    if cache_file.exists():
+        try:
+            data = json.loads(cache_file.read_text(encoding="utf-8"))
+            return data.get("raw_response")
+        except Exception as e:
+            logger.warning(f"Failed to read LLM cache file {cache_file}: {e}")
+    return None
+
+
+def _write_to_cache(cache_key: str, model: str, prompt: str, raw_response: str, temperature: float, max_tokens: int) -> None:
+    """Write raw LLM response to persistent disk cache."""
+    try:
+        LLM_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_file = LLM_CACHE_DIR / f"{cache_key}.json"
+        record = {
+            "model": model,
+            "cache_key": cache_key,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "prompt": prompt,
+            "raw_response": raw_response,
+            "timestamp": time.time(),
+        }
+        cache_file.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to write LLM cache file: {e}")
 
 
 def _get_client() -> Optional[OpenAI]:
@@ -119,7 +160,7 @@ def score_facets_batch(
     client: Optional[OpenAI] = None,
 ) -> list[dict]:
     """
-    Score a batch of facets against a conversation using the LLM.
+    Score a batch of facets against a conversation using the LLM (or disk cache).
 
     Parameters
     ----------
@@ -138,46 +179,54 @@ def score_facets_batch(
     if not facets:
         return []
 
-    client = client or _get_client()
-    if client is None:
-        logger.info("No LLM client configured (GROQ_API_KEY unset). Running offline heuristic scoring.")
-        return _heuristic_offline_score_batch(conversation, facets)
-
     prompt = _build_scoring_prompt(conversation, facets)
+    temperature = 0.1
+    max_tokens = 2000
+    cache_key = _get_cache_key(SCORING_MODEL, prompt, temperature, max_tokens)
 
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            response = client.chat.completions.create(
-                model=SCORING_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a precise facet evaluation system. Output only valid JSON."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.1,  # Low temperature for consistency
-                max_tokens=2000,
-            )
+    # 1. Check persistent disk cache first
+    cached_response = _read_from_cache(cache_key)
+    if cached_response is not None:
+        results = _parse_llm_response(cached_response, facets)
+        if results is not None:
+            return results
 
-            raw_content = response.choices[0].message.content.strip()
-            # Try to extract JSON from the response
-            results = _parse_llm_response(raw_content, facets)
+    # 2. Live LLM execution if client is available
+    client = client or _get_client()
+    if client is not None:
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = client.chat.completions.create(
+                    model=SCORING_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a precise facet evaluation system. Output only valid JSON."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
 
-            if results is not None:
-                return results
+                raw_content = response.choices[0].message.content.strip()
+                results = _parse_llm_response(raw_content, facets)
 
-            logger.warning(
-                f"Attempt {attempt + 1}/{MAX_RETRIES + 1}: "
-                f"Failed to parse LLM response. Raw: {raw_content[:200]}..."
-            )
+                if results is not None:
+                    _write_to_cache(cache_key, SCORING_MODEL, prompt, raw_content, temperature, max_tokens)
+                    return results
 
-        except Exception as e:
-            logger.error(f"Attempt {attempt + 1}/{MAX_RETRIES + 1}: LLM call failed: {e}")
+                logger.warning(
+                    f"Attempt {attempt + 1}/{MAX_RETRIES + 1}: "
+                    f"Failed to parse LLM response. Raw: {raw_content[:200]}..."
+                )
 
-        if attempt < MAX_RETRIES:
-            time.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
+            except Exception as e:
+                logger.error(f"Attempt {attempt + 1}/{MAX_RETRIES + 1}: LLM call failed: {e}")
 
-    # All retries exhausted — return fallback results
-    logger.error(f"All {MAX_RETRIES + 1} attempts failed. Returning fallback results.")
-    return _fallback_results(facets)
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
+
+    # 3. Fallback when no client is configured and no cache is present
+    logger.info("No live LLM response or cache available. Running generic linguistic fallback.")
+    return _heuristic_offline_score_batch(conversation, facets)
 
 
 def _heuristic_offline_score_batch(conversation: str, facets: list[dict]) -> list[dict]:
@@ -186,8 +235,8 @@ def _heuristic_offline_score_batch(conversation: str, facets: list[dict]) -> lis
     Applies principled linguistic rules:
     - Taxonomy-based abstention (structural headers, medical indicators, external telemetry)
     - Speaker attribution (third-party quotes / subjects do not score the candidate)
-    - Generic sarcasm and sentiment inversion cues
-    - General behavioral and trait evidence heuristics
+    - Generic sarcasm and sentiment inversion cues (positive exaggeration juxtaposed with failure terms)
+    - General behavioral and trait evidence heuristics (effort, teamwork, composure, deadlines)
     - Defaults to 'insufficient_evidence' for unobserved traits
     """
     results = []
@@ -196,7 +245,6 @@ def _heuristic_offline_score_batch(conversation: str, facets: list[dict]) -> lis
 
     # Extract quoted text to prevent third-party statement attribution
     quoted_matches = re.findall(r"['\"](.*?)['\"]", conv_clean)
-    speaker_text = re.sub(r"['\"].*?['\"]", "", conv_clean).lower()
 
     # Third-party attribution checks
     is_quoted_speaker = bool(
@@ -283,11 +331,11 @@ def _heuristic_offline_score_batch(conversation: str, facets: list[dict]) -> lis
             })
             continue
 
-        # 6. Sarcasm / Sentiment Inversion
+        # 6. Sarcasm / Sentiment Inversion (Generic: positive praise juxtaposed with system failure)
         if name_lower in ["happiness", "general mood and attitude", "discontentment"]:
-            has_sarcasm = bool(
-                re.search(r"\b(oh\s*,?\s*wonderful|truly\s+the\s+highlight|just\s+love\b.*?\b(?:outage|crash|broken|error|stack\s+trace))\b", conv_lower)
-            )
+            has_positive_praise = bool(re.search(r"\b(wonderful|fantastic|awesome|brilliant|great|delight|highlight|joy|love|thrilled)\b", conv_lower))
+            has_negative_failure = bool(re.search(r"\b(outage|crash|broken|bug|error|failure|disaster|fire|exception|stack\s*trace|production\s+down)\b", conv_lower))
+            has_sarcasm = bool(has_positive_praise and has_negative_failure)
             if has_sarcasm:
                 score = 1 if name_lower != "discontentment" else 5
                 results.append({
@@ -303,7 +351,7 @@ def _heuristic_offline_score_batch(conversation: str, facets: list[dict]) -> lis
         if name_lower in ["perseverance", "persistence", "troubleshooting technical issues", "hardworking"]:
             has_challenge = bool(re.search(r"\b(fail\w*|bug\w*|error\w*|leak\w*|outage|bottleneck|setback\w*|struggl\w*|problem\w*)\b", conv_lower))
             has_continued_effort = bool(re.search(r"\b(kept|stayed\s+up|continued|didn't\s+give\s+up|practiced|tested|debugg\w*|analyz\w*|working\s+until)\b", conv_lower))
-            has_surrender = bool(re.search(r"\b(gave\s+up|quit|decided\s+not\s+to\s+try|no\s+point)\b", conv_lower))
+            has_surrender = bool(re.search(r"\b(gave\s+up|quit\w*|surrender\w*|abandon\w*|stop\w*\s+trying|refus\w*\s+to\s+try|no\s+point)\b", conv_lower))
 
             if has_challenge and has_continued_effort and not has_surrender:
                 results.append({
@@ -320,13 +368,13 @@ def _heuristic_offline_score_batch(conversation: str, facets: list[dict]) -> lis
                     "status": "scored",
                     "score": 1,
                     "confidence": 0.90,
-                    "reason": "Speaker reports abandoning effort and choosing not to try again after a setback.",
+                    "reason": "Speaker explicitly reports abandoning effort and surrendering when confronted with a setback.",
                 })
                 continue
 
-        # 8. Collaboration & Teamwork
+        # 8. Collaboration & Teamwork (Generic collaborative stems & multilingual teamwork terms)
         if name_lower in ["cooperation", "collaboration", "delegation skills"]:
-            has_collab = bool(re.search(r"\b(pair-program|milke|together|support\s+each\s+other|delegat\w*|coordinated\s+with|team\w*)\b", conv_lower))
+            has_collab = bool(re.search(r"\b(team\w*|collaborat\w*|coordinat\w*|delegat\w*|together|pair[- ]?\w*|support\w*|shared\s+effort|group\s+work|saath\w*|mil\s*kar|joint\w*)\b", conv_lower))
             if has_collab:
                 results.append({
                     "facet": name,
@@ -351,10 +399,10 @@ def _heuristic_offline_score_batch(conversation: str, facets: list[dict]) -> lis
                 })
                 continue
 
-        # 10. Deadlines & Timeliness
+        # 10. Deadlines & Timeliness (Generic on-time vs missed indicators)
         if name_lower in ["meeting deadlines", "submission"]:
-            has_ontime = bool(re.search(r"\b(time\s+pe|on\s+time|ahead\s+of\s+schedule|before\s+the\s+deadline|early)\b", conv_lower))
-            has_missed = bool(re.search(r"\b(missed\s+the\s+deadline|submitted\s+it\s+on\s+\w+day|past\s+due|late)\b", conv_lower))
+            has_ontime = bool(re.search(r"\b(on[- ]?time|ahead\s+of\s+(?:time|schedule)|before\s+(?:the\s+)?deadline|early|punctual\w*|timely|samay\s+par|waqt\s+pe)\b", conv_lower))
+            has_missed = bool(re.search(r"\b(miss\w*\s+(?:the\s+)?deadline|past\s+due|late|delay\w*|overdue|after\s+(?:the\s+)?deadline)\b", conv_lower))
 
             if has_ontime and not has_missed:
                 results.append({

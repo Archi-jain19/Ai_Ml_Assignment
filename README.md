@@ -423,11 +423,11 @@ graph TD
 
 ## 12. Mandatory Documentation Index
 
-For deep-dive technical rationale, consult the dedicated submission documents:
-
-* [`DECISIONS.md`](file:///c:/Users/archi/Desktop/ahoum/DECISIONS.md) — 4 Non-trivial engineering trade-offs (Hybrid Retrieval, Micro-Batching $B=5$, 4-State Abstention Schema, Domain Intent Routing).
-* [`DEBUGGING.md`](file:///c:/Users/archi/Desktop/ahoum/DEBUGGING.md) — 4 Real debugging cases (Catalogue trailing colons, Markdown code block extraction, PowerShell statement compatibility, Behavioral generalization).
-* [`PROMPT_LOG.md`](file:///c:/Users/archi/Desktop/ahoum/PROMPT_LOG.md) — AI usage disclosure with 5 concrete examples of human supervisor corrections over raw AI suggestions.
+* [DECISIONS.md](DECISIONS.md) — 4 Non-trivial engineering trade-offs (Hybrid Retrieval, Micro-Batching $B=5$, 4-State Abstention Schema, Domain Intent Routing).
+* [DEBUGGING.md](DEBUGGING.md) — 4 Real debugging cases (Catalogue trailing colons, Markdown code block extraction, PowerShell statement compatibility, Behavioral generalization).
+* [PROMPT_LOG.md](PROMPT_LOG.md) — AI usage disclosure with concrete examples of human supervisor corrections over raw AI suggestions.
+* [Adversarial Red-Team Report](artifacts/adversarial_report.md) — 5 Adversarial attack vectors evaluated against LLM abstention guardrails.
+* [Retrieval Ablation Study](artifacts/ablation_report.md) — Empirical comparison of pure dense vs hybrid candidate selection architectures.
 
 ---
 

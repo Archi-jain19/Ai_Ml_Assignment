@@ -18,6 +18,8 @@ RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 BENCHMARK_DIR = DATA_DIR / "benchmark"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
+ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
+LLM_CACHE_DIR = ARTIFACTS_DIR / "llm_cache"
 
 RAW_CSV_PATH = RAW_DIR / "Facets Assignment.csv"
 ENRICHED_CSV_PATH = PROCESSED_DIR / "enriched_facets.csv"

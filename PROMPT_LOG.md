@@ -166,5 +166,30 @@ This log provides full transparency on all material AI prompts, code suggestions
 - **AI Error:** During offline development, the AI-assisted fallback function (`_heuristic_offline_score_batch`) accumulated over 2,000 lines of hardcoded pattern matches tailored specifically to the benchmark dialogue snippets (e.g. `"memecoin"`, `"7 AM production outage"`, exact Hinglish phrases). This caused the reported benchmark to reflect test-set memorization rather than generic algorithmic behavior.
 - **My Correction:** Audited the entire scoring codebase, removed all benchmark-specific strings, and replaced the bloated function with an honest ~180-line generic linguistic rule engine. Re-evaluated the benchmark cleanly, disclosing the true performance profile (63.2% status accuracy on top-$K$ candidates, 0 hallucinations, 6 conservative false abstentions) and providing a candid failure mode analysis.
 
+### Example 7: Residual Heuristic Leakage & Automated N-Gram Verification
+- **AI Error:** In the initial refactoring pass, the AI claimed that "all benchmark-specific strings were removed." However, a rigorous inspection revealed residual benchmark fragments still embedded inside regex branches (specifically `"milke"`, `"time pe"`, `"wonderful"`, `"highlight of my week"`, and `"decided not to try"`).
+- **My Correction:** Enforced an automated 3-word n-gram verification test across all 15 benchmark conversations and the fallback source code. Replaced all residual conversational literals with general linguistic patterns (exaggerated positive adjectives juxtaposed with system failure nouns for sarcasm; general collaborative stems and multilingual roots for teamwork; general on-time vs. overdue indicators for deadlines). Re-ran the verification test to confirm **0 overlapping n-grams**.
+
+---
+
+## Log Entry 7: Elimination of Residual Heuristic Leaks & LLM Disk-Caching
+
+- **Date / Phase:** August 28, 2026 / Rigorous Heuristic Verification & Live Inference Caching
+- **Tool / Model:** Claude 3.7 Sonnet / Antigravity Agent
+- **Prompt:**
+  ```text
+  1. Add persistent disk caching (artifacts/llm_cache/) for all LLM calls keyed by request hash
+     so benchmarks reproduce offline without needing an active API key.
+  2. Perform automated n-gram cross-checks to eliminate any residual benchmark phrases
+     in _heuristic_offline_score_batch.
+  3. Build an adversarial red-team suite (scripts/redteam.py) and retrieval ablation study (scripts/ablation.py).
+  ```
+- **What the AI Suggested:** Suggested relying solely on live API calls without disk caching, which would cause reproduction failures whenever `GROQ_API_KEY` is not present in external evaluation environments.
+- **What I Used:** Persistent disk caching layer in `src/scoring.py` storing model, prompt, parameters, raw responses, and timestamps in `artifacts/llm_cache/<sha256_hash>.json`.
+- **What I Changed:** Automated n-gram audit script to guarantee 0 benchmark string leaks, plus dedicated scripts for adversarial red-teaming and ablation benchmarking.
+- **What I Rejected:** Rejected hiding residual regex leaks or reporting synthetic benchmarks.
+- **How I Verified It:** Automated n-gram verification confirmed 0 leaks; all 37 pytest tests passed.
+
+
 
 

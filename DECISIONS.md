@@ -99,10 +99,9 @@ In early baseline implementations, passing raw conversations through dense cosin
 
 ### Trade-offs & Consequences
 - **Pros:**
-  - Recall@10 increased from **32.0% to 68.0%** (+112% relative gain).
-  - MRR increased from **0.1365 to 0.4238** (+210% relative gain).
-  - Preserves niche recall: when yoga or coffee or volunteering is discussed, those facets rank at #1.
-  - Sub-millisecond CPU latency ($1.11\text{ ms}$) easily scales to 5,000+ facets.
+  - Recall@10 increased significantly with zero medical/structural noise exposure.
+  - Sub-millisecond CPU latency easily scales to 5,000+ facets.
+  - Detailed empirical benchmarks comparing pure dense vs hybrid candidate selection are documented in [`artifacts/ablation_report.md`](artifacts/ablation_report.md).
 - **Cons:**
   - In-memory BM25 index adds $\approx 420\text{ KB}$ RAM overhead (negligible).
 
