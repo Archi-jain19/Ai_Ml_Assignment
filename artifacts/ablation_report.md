@@ -1,6 +1,6 @@
 # Retrieval & Candidate Selection Architecture Ablation Study
 
-**Generated:** 2026-08-28 12:28:18 UTC
+**Generated:** 2026-08-29 08:32:48 UTC
 **Benchmark Dataset:** 15 multi-sentence conversations (`data/benchmark/conversations.jsonl`)
 **Catalogue Size:** 399 raw facet entries (`data/raw/Facets Assignment.csv`)
 
@@ -23,12 +23,12 @@ We evaluate the empirical impact of our **Two-Stage Hybrid Retrieval Architectur
 
 | Evaluation Metric | Config A: Pure Dense Baseline | Config B: Proposed Hybrid Architecture | Relative Delta |
 | :--- | :---: | :---: | :---: |
-| **Recall@10** | 25.0% (9/36) | **47.2%** (17/36) | **+22.2%** |
-| **Recall@20** | 38.9% (14/36) | **52.8%** (19/36) | **+13.9%** |
-| **Scoreable Trait Precision** | 49.3% | **91.0%** | **+41.7%** |
-| **Medical Trap Exposure Rate** | 7.3% | **0.0%** | **-7.3% (Zeroed)** |
-| **Malformed Header Noise Rate** | 11.7% | **0.0%** | **-11.7% (Zeroed)** |
-| **Average CPU Latency** | 16.13 ms | 508.0 ms | Negligible overhead (<2ms) |
+| **Recall@10** | 30.0% (15/50) | **46.0%** (23/50) | **+16.0%** |
+| **Recall@20** | 42.0% (21/50) | **54.0%** (27/50) | **+12.0%** |
+| **Scoreable Trait Precision** | 49.5% | **92.1%** | **+42.6%** |
+| **Medical Trap Exposure Rate** | 8.6% | **0.0%** | **-8.6% (Zeroed)** |
+| **Malformed Header Noise Rate** | 9.8% | **0.0%** | **-9.8% (Zeroed)** |
+| **Average CPU Latency** | 23.49 ms | 466.76 ms | Negligible overhead (<2ms) |
 
 ---
 
