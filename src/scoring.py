@@ -536,8 +536,8 @@ def score_conversation(
         results = score_facets_batch(conversation, batch, client)
         all_results.extend(results)
 
-        # Rate limiting: small delay between batches
-        if i + batch_size < len(facets):
+        # Rate limiting: small delay between batches only when making live API calls
+        if client is not None and (i + batch_size < len(facets)):
             time.sleep(0.5)
 
     return all_results
